@@ -1,6 +1,6 @@
 # Python Pipeline for Tobler-based Dasymetric Mapping
 
-This repository contains Python scripts to perform sum-preserving, integer-based dasymetric mapping, primarily using the `tobler` library for spatial interpolation and custom helper functions for data preparation and integerization. The main goal is disaggregating count data (e.g., population) from larger source zones to smaller target zones (e.g., building footprints).
+Mostly made with Gemini. This repository contains Python scripts to perform sum-preserving, integer-based dasymetric mapping, primarily using the `tobler` library for spatial interpolation and custom helper functions for data preparation and integerization. The main goal is disaggregating count data (e.g., population) from larger source zones to smaller target zones (e.g., building footprints).
 
 ## Description
 
