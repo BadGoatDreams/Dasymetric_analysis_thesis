@@ -1,31 +1,26 @@
-Markdown
+# Python Pipeline for Tobler-based Dasymetric Mapping
 
-# Python Dasymetric Mapping Utilities
-
-This repository contains Python code for performing weighted dasymetric mapping, primarily aimed at disaggregating population data (or other count data) from source zones (e.g., census tracts) to target zones (e.g., building footprints).
+This repository contains Python scripts to perform sum-preserving, integer-based dasymetric mapping, primarily using the `tobler` library for spatial interpolation and custom helper functions for data preparation and integerization. The main goal is disaggregating count data (e.g., population) from larger source zones to smaller target zones (e.g., building footprints).
 
 ## Description
 
-Dasymetric mapping refines the spatial distribution of data by using ancillary information (like building locations, land use types, etc.) to allocate counts more accurately than simple area weighting. This project provides:
+Dasymetric mapping refines the spatial distribution of data using ancillary information. This project implements a pipeline approach that leverages the robust area-weighted interpolation capabilities of the `tobler` library and applies a manual Largest Remainder Method (LRM) to ensure the resulting allocated counts are integers and conserve the original totals within each source zone.
 
-1.  A flexible Python function (`weighted_dasymetric_flexible` in `dasy_utils.py`) attempting to implement various dasymetric techniques.
-2.  Example scripts demonstrating usage, particularly highlighting the use of the `tobler` library as a robust alternative due to issues encountered with the custom function's core dependency.
+An earlier version attempted a custom implementation (`weighted_dasymetric_flexible` in `dasy_utils.py`) but encountered persistent issues with `geopandas.overlay`. **The `tobler`-based pipeline described here is the recommended and currently working approach.**
 
-The primary goal during development was to allocate Benton County teenage population data from census tracts to building footprints.
+## Features (Pipeline)
 
-## Features (of the custom `weighted_dasymetric_flexible` function)
-
-* **Multiple Weighting Sources:** Can incorporate weights based on target attributes (e.g., number of floors), ancillary vector layers (e.g., land use factors), and ancillary raster layers (e.g., population density).
-* **Area Weighting:** Can include the intersected area as part of the weight calculation.
-* **Binary Masking:** Allows excluding certain target areas based on overlap with a mask layer (e.g., parks, water bodies).
-* **Integer Output:** Includes an option (`integerize=True`) to use the Largest Remainder Method (LRM) to produce sum-preserving integer outputs.
-* **Automatic Saving:** Includes an option (`save_output=True`) to save results directly to an ESRI Shapefile.
+* **Area-Weighted Interpolation:** Uses `tobler.area_weighted.area_interpolate` for reliable calculation of proportional values based on spatial overlap.
+* **Sum-Preserving Integerization:** Implements the Largest Remainder Method (LRM) via helper functions to convert interpolated float values into integers while ensuring the sum matches the original source zone totals.
+* **Data Preparation Helpers:** Includes functions to load data, handle CRS assignment and reprojection, and attempt geometry fixing using `buffer(0)`.
+* **Modular Structure:** The logic is separated into a utility library (`dasy_pipeline_utils.py`) and a runner script (`run_dasy_pipeline.py`) for easier configuration and execution.
+* **Shapefile Output:** Saves the final integerized results to an ESRI Shapefile.
 
 ## Current Status & Limitations
 
-* **`geopandas.overlay` Issue:** Extensive testing revealed a persistent issue where the core `geopandas.overlay(..., how='intersection')` operation, used within the `weighted_dasymetric_flexible` function, consistently returns an empty result for the provided Benton County test data, despite visual confirmation of overlap and successful geometry validation/fixing attempts (`buffer(0)`). This prevents the custom function from calculating intersections and weights correctly in its current state for this specific dataset/environment.
-* **`tobler` Library Recommended:** Due to the `overlay` issue, the recommended approach for performing the dasymetric allocation for this project is to use the specialized `tobler` library. Example scripts using `tobler` (e.g., `barebones_example_tobler_manual_lrm.py`) have been shown to successfully produce non-zero float results.
-* **Integerization:** While the custom function includes built-in LRM, the current working approach uses `tobler`'s float output, potentially followed by manual LRM steps (as shown in `barebones_example_tobler_manual_lrm.py`) or simple rounding if sum preservation is not strictly required.
+* **Working Approach:** The pipeline using `tobler` and manual LRM (orchestrated by `run_dasy_pipeline.py` using `dasy_pipeline_utils.py`) is functional and produces sum-preserving integer results based on area weighting.
+* **Original Custom Function (`dasy_utils.py`):** Contains the `weighted_dasymetric_flexible` function offering more weighting options (rasters, attributes, masking). However, it is **currently non-functional** for the specific test data due to persistent failures in its core `geopandas.overlay` step, which returns empty intersections despite visual overlap and valid geometries. This file is kept for reference but is **not recommended for use** until the underlying `overlay` issues are resolved.
+* **Weighting Limited:** The current working pipeline primarily demonstrates *area-weighted* interpolation via `tobler`. Extending it to use other weights (like building floors, land use factors) would require modifying the pipeline, potentially by calculating weights beforehand and passing them to more advanced `tobler` functions or implementing custom weighting logic around `tobler.area_weighted.area_interpolate`.
 
 ## Requirements
 
@@ -33,135 +28,80 @@ The primary goal during development was to allocate Benton County teenage popula
 * GeoPandas
 * Pandas
 * NumPy
-* Shapely
-* **Tobler:** Required for the currently recommended working examples.
-* **Optional (for raster features/plotting):**
-    * Rasterio
-    * Rasterstats
-    * Matplotlib
+* Tobler
+* Shapely (usually installed with GeoPandas)
+* Math (standard library)
+* OS (standard library)
+* Warnings (standard library)
 
 You can install the core requirements using pip:
 
 ```bash
-pip install geopandas pandas numpy tobler shapely
-# Optional for raster/plotting:
-# pip install rasterio rasterstats matplotlib
+pip install geopandas pandas numpy tobler
 
 Usage
-Recommended Approach (Using tobler + Manual LRM)
 
-This approach uses tobler for the reliable area-weighted interpolation and then applies the Largest Remainder Method manually to achieve sum-preserving integer results.
+The recommended way to use this code is via the runner script:
 
-See the script barebones_example_tobler_manual_lrm.py for a full example. Key steps:
-Python
+    Configure run_dasy_pipeline.py:
+        Open the run_dasy_pipeline.py script.
+        Modify the variables in the # --- Configuration Parameters --- section:
+            Set BASE_DATA_DIR, SOURCE_FILE, TARGET_FILE to your actual file paths.
+            Set OUTPUT_DIR and OUTPUT_FILENAME for the desired output location and Shapefile name.
+            Verify SOURCE_POP_COL (the population/count column in your source data) and SOURCE_ID_COL (a unique ID column for your source zones, like 'GEOID') are correct.
+            Set OUTPUT_INT_COL to the desired name for the final integer result column (max 10 characters for Shapefile).
+            Confirm SOURCE_ORIGINAL_CRS, TARGET_ORIGINAL_CRS, and TARGET_PROJECTED_CRS match your data.
+    Place Files: Ensure run_dasy_pipeline.py and dasy_pipeline_utils.py are in the same directory (or that dasy_pipeline_utils.py is in your Python path).
+    Run from Terminal:
+    Bash
 
-import geopandas as gpd
-import pandas as pd
-import os
-import math
-import numpy as np
-from tobler.area_weighted import area_interpolate
-# Assume _integerize_lrm helper function is defined in the script (copied from dasy_utils.py)
+    python run_dasy_pipeline.py
 
-# 1. Define Paths and Parameters
-base_data_dir = "C:/Users/plato/Documents/Dasymetric_analysis_thesis/dasy_test_gemini/"
-source_filepath = os.path.join(base_data_dir, "Teen_pop_benton/benton_census_tracts_teen_pop_short.shp")
-target_filepath = os.path.join(base_data_dir, "residences_perhaps/residences_perhaps.shp")
-output_dir = os.path.join(base_data_dir, "output_shapefiles")
-output_filename_shp = "teen_tobler_lrm_integer.shp"
-source_pop_col = "tot_teen"
-source_id_col = "GEOID" # Ensure this column exists in source data
-output_col_name_int = "teen_lrm" # <= 10 chars
+    Output: The script will print progress messages and save the resulting Shapefile (containing the original target features plus the new integer population column) to the specified output directory. It also prints a comparison of the original total population and the final estimated integer total.
 
-# 2. Load and Prepare Data (Load, Set CRS, Reproject to Projected CRS, buffer(0))
-print("Loading and preparing data...")
-source_data = gpd.read_file(source_filepath).set_crs("EPSG:4269", allow_override=True).to_crs("EPSG:2991")
-target_data = gpd.read_file(target_filepath).set_crs("EPSG:4326", allow_override=True).to_crs("EPSG:2991")
-source_data['geometry'] = source_data.geometry.buffer(0)
-target_data['geometry'] = target_data.geometry.buffer(0)
-source_data = source_data[~source_data.geometry.is_empty]
-target_data = target_data[~target_data.geometry.is_empty]
-source_data[source_pop_col] = pd.to_numeric(source_data[source_pop_col], errors='coerce').fillna(0)
-original_total_overall = source_data[source_pop_col].sum()
+Core Functions (dasy_pipeline_utils.py)
 
-# 3. Tobler Area Interpolation (Float results)
-print("Running Tobler area interpolation...")
-interpolated_float_gdf = area_interpolate(
-    source_df=source_data[[source_id_col, source_pop_col, 'geometry']],
-    target_df=target_data,
-    extensive_variables=[source_pop_col]
-)
+This file contains the building blocks used by the run_dasy_pipeline.py script:
 
-# 4. Re-link Source Info for LRM
-print("Re-linking source info...")
-target_for_join = interpolated_float_gdf[[source_pop_col, 'geometry']].copy()
-target_for_join['__target_id'] = target_for_join.index
-source_orig_pop_col = f"__{source_pop_col}_orig"
-source_for_join = source_data[[source_id_col, source_pop_col, 'geometry']].rename(columns={source_pop_col: source_orig_pop_col})
-joined_gdf = gpd.sjoin(target_for_join, source_for_join, how='left', predicate='intersects')
-joined_gdf = joined_gdf.drop_duplicates(subset=['__target_id'], keep='first')
-joined_gdf[source_id_col] = joined_gdf[source_id_col].fillna('__NO_SOURCE__')
-joined_gdf[source_orig_pop_col] = joined_gdf[source_orig_pop_col].fillna(0)
-joined_gdf[source_pop_col] = joined_gdf[source_pop_col].fillna(0) # Float column
+    _integerize_lrm(group_df, float_col, source_total_col):
+        Internal helper function. Applies the Largest Remainder Method to a pandas DataFrame group representing features within a single source zone. Converts float estimates (float_col) to integers, ensuring their sum matches the group's original source total (source_total_col).
+    load_and_prepare_data(filepath, target_crs, expected_original_crs=None, fix_geom=True, layer_name="Data"):
+        Loads a vector file into a GeoDataFrame.
+        Assigns expected_original_crs if the loaded data is missing CRS information.
+        Reprojects the data to the specified target_crs.
+        Optionally attempts to fix invalid geometries using .buffer(0) and removes empty geometries (fix_geom=True).
+        Returns the prepared GeoDataFrame.
+    run_area_interpolate_tobler(source_gdf, target_gdf, extensive_variables, source_id_col):
+        Takes prepared source and target GeoDataFrames.
+        Ensures specified extensive_variables (like population columns) exist and are numeric in the source.
+        Calls tobler.area_weighted.area_interpolate to perform the core spatial weighting.
+        Returns the target GeoDataFrame augmented with new columns containing the interpolated float results, along with the original total sum of the first extensive variable.
+    link_source_info_for_lrm(interpolated_gdf, source_gdf, source_id_col, source_pop_col):
+        Takes the float results from run_area_interpolate_tobler and the original prepared source data.
+        Performs a spatial join (sjoin) to link each target feature back to its corresponding original source zone based on intersection.
+        Adds the unique source ID (source_id_col) and the original source population value (source_pop_col, renamed internally) to the interpolated dataframe. This is necessary for grouping during LRM.
+        Returns the joined GeoDataFrame.
+    apply_lrm_and_finalize(joined_gdf, target_orig_gdf, float_col, source_id_col, source_orig_pop_col, output_col_name_int):
+        Takes the joined_gdf (output from link_source_info_for_lrm).
+        Groups the data by the linked source_id_col.
+        Applies the _integerize_lrm helper function to each group to calculate sum-preserving integer results.
+        Merges the final integer results (output_col_name_int) back onto the original target data structure (target_orig_gdf) using the index.
+        Returns the final GeoDataFrame ready for saving.
+    save_result_gdf(gdf, output_dir, output_filename, columns_to_save=None):
+        Saves the provided GeoDataFrame (gdf) to an ESRI Shapefile.
+        Creates the output_dir if it doesn't exist.
+        Constructs the full output path.
+        Optionally saves only a subset of columns specified in columns_to_save.
+        Includes warnings/checks for Shapefile column name length limits.
 
-# 5. Apply LRM Manually
-print("Applying LRM...")
-# Assumes _integerize_lrm function is defined in the script
-integer_results = joined_gdf.groupby(source_id_col).apply(
-    lambda grp: _integerize_lrm(grp, source_pop_col, source_orig_pop_col)
-)
-integer_results = integer_results.reset_index(level=0, drop=True)
-joined_gdf[output_col_name_int] = integer_results
-joined_gdf[output_col_name_int] = joined_gdf[output_col_name_int].fillna(0).astype(int)
+File Structure
 
-# 6. Prepare Final Output and Save
-print("Saving results...")
-final_gdf = target_data.merge(
-    joined_gdf[[output_col_name_int]], left_index=True, right_index=True, how='left'
-)
-final_gdf[output_col_name_int] = final_gdf[output_col_name_int].fillna(0).astype(int)
-os.makedirs(output_dir, exist_ok=True)
-output_filepath_shp = os.path.join(output_dir, output_filename_shp)
-# Select/rename columns as needed for shapefile before saving
-cols_to_save = list(target_data.columns);
-if 'geometry' in cols_to_save: cols_to_save.remove('geometry')
-cols_to_save.extend([output_col_name_int, 'geometry'])
-final_gdf[cols_to_save].to_file(output_filepath_shp, driver="ESRI Shapefile")
-
-print("Done.")
-
-Custom Function Usage (Currently Not Recommended)
-
-The dasy_utils.py file contains the weighted_dasymetric_flexible function which offers more weighting options but currently fails due to the geopandas.overlay issue described above. If that issue were resolved (e.g., by updating libraries or identifying specific data problems), its usage would look like this:
-Python
-
-from dasy_utils import weighted_dasymetric_flexible
-
-# Assume source_data, target_data are loaded and preprocessed (CRS, geometry fixing)
-# Assume output_dir, output_filename_shp are defined
-
-result_gdf = weighted_dasymetric_flexible(
-    source_gdf=source_data,
-    target_gdf=target_data,
-    source_attribute="tot_teen",
-    weight_attributes=None, # Or ['FLOORS'], etc.
-    ancillary_vector_layers=None, # Or [land_use_gdf]
-    ancillary_raster_path=None, # Or "path/to/density.tif"
-    use_intersect_area_weight=True,
-    binary_mask_layer=None, # Or mask_gdf
-    mask_attribute=None, # Or "MASK_TYPE"
-    mask_values_indicating_exclusion=[1],
-    target_output_attribute="teen_est", # <= 10 chars for save_output
-    integerize=True, # Use built-in LRM
-    save_output=True,
-    output_dir=output_dir,
-    output_filename=output_filename_shp
-)
-
-print(result_gdf.head())
-
-Files
-
-    dasy_utils.py: Contains the weighted_dasymetric_flexible function and the _integerize_lrm helper function. Note: Relies on geopandas.overlay which currently fails with the test data.
-    barebones_example_tobler_manual_lrm.py: Recommended example script demonstrating successful interpolation using tobler and manual LRM for integer results.
-    (Other example scripts): May show different steps in the debugging process or alternative approaches.
+.
+├── dasy_pipeline_utils.py   # Library with helper functions (uses Tobler)
+├── run_dasy_pipeline.py     # Main script to configure and run the pipeline
+├── dasy_utils.py            # Original custom function (DEPRECATED due to overlay issues)
+├── README.md                # This file
+└── data/                    # (Example directory - store your input data here)
+    └── source/
+    └── target/
+└── output/                  # (Example directory - output files saved here)
